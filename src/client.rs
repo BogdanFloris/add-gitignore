@@ -12,11 +12,11 @@ static API: &str = "https://www.gitignore.io/api/";
 /// Returns the technologies for which the application can generate `.gitignore`'s.
 pub fn get_technologies() -> Result<Vec<String>, reqwest::Error> {
     // Get the request body
-    let body = reqwest::get(&format!("{}{}", API, "list"))?
-        .text()?;
+    let body = reqwest::get(&format!("{}{}", API, "list"))?.text()?;
 
     // Transform to a vector of Strings
-    let technologies: Vec<String> = body.split(",")
+    let technologies: Vec<String> = body
+        .split(&[',', '\n'][..])
         .map(|s| s.to_string())
         .collect();
 
@@ -26,8 +26,7 @@ pub fn get_technologies() -> Result<Vec<String>, reqwest::Error> {
 /// Returns the `.gitignore` contents given a technology.
 pub fn get_gitignore(tech: &str) -> Result<String, reqwest::Error> {
     // Get the request body
-    let body = reqwest::get(&format!("{}{}", API, tech))?
-        .text()?;
+    let body = reqwest::get(&format!("{}{}", API, tech))?.text()?;
 
     Ok(body)
 }
