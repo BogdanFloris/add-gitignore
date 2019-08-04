@@ -9,18 +9,20 @@ use std::ops::Rem;
 pub struct Terminal<'a> {
     items: Vec<String>,
     clear: bool,
-    theme: &'a Theme,
+    theme: &'a dyn Theme,
     capacity: usize,
+    search_string: String,
 }
 
 impl<'a> Terminal<'a> {
     /// Creates a new terminal item with a theme
-    pub fn new(theme: &'a Theme, capacity: usize) -> Terminal<'a> {
+    pub fn new(theme: &'a dyn Theme, capacity: usize) -> Terminal<'a> {
         Terminal {
             items: vec![],
             clear: true,
             theme,
             capacity,
+            search_string: String::new(),
         }
     }
 
@@ -36,21 +38,22 @@ impl<'a> Terminal<'a> {
     ///
     /// The user can select the items with the space bar and on enter
     /// the selected items will be returned.
-    pub fn interact(&self) -> io::Result<Vec<usize>> {
+    pub fn interact(&mut self) -> io::Result<Vec<usize>> {
         self.interact_on(&Term::stderr())
     }
 
     /// Like `interact` but allows a specific terminal to be set.
-    pub fn interact_on(&self, term: &Term) -> io::Result<Vec<usize>> {
-        // Define the first page and the number of pages
+    pub fn interact_on(&mut self, term: &Term) -> io::Result<Vec<usize>> {
+        // Define the first page
         let mut page: usize = 0;
-        let pages: usize = (self.items.len() / self.capacity) + 1;
 
         // Define the theme renderer
         let mut renderer = TerminalRenderer::new(term, self.theme);
 
         // Render the prompt
-        renderer.prompt("Select the technologies for `.gitignore` using `space`")?;
+        renderer.prompt(
+            "Select the technologies for `.gitignore` using `space`. Press `enter` when done",
+        )?;
         renderer.prompt("Search pattern")?;
 
         // Define the current selection
@@ -63,21 +66,40 @@ impl<'a> Terminal<'a> {
             size_vec.push(size);
         }
 
-        // Make a vector to remember which value was checked
+        // Make a vector used to remember which values were checked
         let mut checked: Vec<_> = repeat(false).take(self.items.len()).collect();
 
+        // Make a vector used to store indices of items
+        // that are not filtered out by the search string
+        let mut filter: Vec<usize> = Vec::new();
+
+        // Filter guard
+        let mut do_filter = true;
+
         loop {
+            // Render the search string
+            renderer.render_search_string(&self.search_string)?;
+
+            // Filter on search string if guard is true
+            if do_filter {
+                filter.clear();
+                for (idx, item) in self.items.iter().enumerate() {
+                    if item.contains(&self.search_string) {
+                        filter.push(idx);
+                    }
+                }
+                if !filter.is_empty() {
+                    sel = filter[0];
+                    page = 0;
+                }
+                do_filter = false;
+            }
+
             // Render the items
-            for (idx, item) in self
-                .items
-                .iter()
-                .enumerate()
-                .skip(page * self.capacity)
-                .take(self.capacity)
-            {
+            for idx in filter.iter().skip(page * self.capacity).take(self.capacity) {
                 renderer.selection(
-                    item,
-                    match (checked[idx], sel == idx) {
+                    self.items[idx.clone()].as_str(),
+                    match (checked[idx.clone()], sel == idx.clone()) {
                         (true, true) => SelectionStyle::CheckboxCheckedSelected,
                         (true, false) => SelectionStyle::CheckboxCheckedUnselected,
                         (false, true) => SelectionStyle::CheckboxUncheckedSelected,
@@ -89,37 +111,44 @@ impl<'a> Terminal<'a> {
             match term.read_key()? {
                 Key::ArrowDown => {
                     if sel == !0 {
-                        sel = 0;
+                        if filter.is_empty() {
+                            sel = 0;
+                        } else {
+                            sel = filter[0];
+                        }
                     } else {
-                        sel = (sel as u64 + 1).rem(self.items.len() as u64) as usize;
+                        while {
+                            sel = (sel as u64 + 1).rem(self.items.len() as u64) as usize;
+                            !filter.contains(&sel)
+                        } {}
                     }
                 }
                 Key::ArrowUp => {
                     if sel == !0 {
-                        sel = self.items.len() - 1;
+                        if filter.is_empty() {
+                            sel = self.items.len() - 1;
+                        } else {
+                            sel = filter[filter.len() - 1];
+                        }
                     } else {
-                        sel = ((sel as i64 - 1 + self.items.len() as i64)
-                            % (self.items.len() as i64)) as usize;
+                        while {
+                            sel = ((sel as i64 - 1 + self.items.len() as i64)
+                                % (self.items.len() as i64))
+                                as usize;
+                            !filter.contains(&sel)
+                        } {}
                     }
-                }
-                Key::ArrowLeft => {
-                    if page == 0 {
-                        page = pages - 1;
-                    } else {
-                        page = page - 1;
-                    }
-                    sel = page * self.capacity;
-                }
-                Key::ArrowRight => {
-                    if page == pages - 1 {
-                        page = 0;
-                    } else {
-                        page = page + 1;
-                    }
-                    sel = page * self.capacity;
                 }
                 Key::Char(' ') => {
                     checked[sel] = !checked[sel];
+                }
+                Key::Backspace => {
+                    self.search_string.pop();
+                    do_filter = true;
+                }
+                Key::Char(ch) => {
+                    self.search_string.push(ch);
+                    do_filter = true;
                 }
                 Key::Escape => {
                     if self.clear {
@@ -141,8 +170,9 @@ impl<'a> Terminal<'a> {
             }
 
             // Update page if needed
-            if sel < page * self.capacity || sel > (page + 1) * self.capacity {
-                page = sel / self.capacity;
+            let idx_sel = filter.iter().position(|&idx| idx == sel).unwrap_or(0);
+            if idx_sel < page * self.capacity || idx_sel > (page + 1) * self.capacity {
+                page = idx_sel / self.capacity;
             }
             renderer.clear_preserve_prompt(&size_vec)?;
         }
@@ -152,14 +182,14 @@ impl<'a> Terminal<'a> {
 /// Helper struct to render a terminal.
 pub(crate) struct TerminalRenderer<'a> {
     term: &'a Term,
-    theme: &'a Theme,
+    theme: &'a dyn Theme,
     height: usize,
     prompt_height: usize,
     prompts_reset_height: bool,
 }
 
 impl<'a> TerminalRenderer<'a> {
-    pub fn new(term: &'a Term, theme: &'a Theme) -> TerminalRenderer<'a> {
+    pub fn new(term: &'a Term, theme: &'a dyn Theme) -> TerminalRenderer<'a> {
         TerminalRenderer {
             term,
             theme,
@@ -169,7 +199,9 @@ impl<'a> TerminalRenderer<'a> {
         }
     }
 
-    fn write_formatted_line<F: FnOnce(&mut TerminalRenderer, &mut fmt::Write) -> fmt::Result>(
+    fn write_formatted_line<
+        F: FnOnce(&mut TerminalRenderer, &mut dyn fmt::Write) -> fmt::Result,
+    >(
         &mut self,
         f: F,
     ) -> io::Result<()> {
@@ -179,7 +211,9 @@ impl<'a> TerminalRenderer<'a> {
         self.term.write_line(&buf)
     }
 
-    fn write_formatted_prompt<F: FnOnce(&mut TerminalRenderer, &mut fmt::Write) -> fmt::Result>(
+    fn write_formatted_prompt<
+        F: FnOnce(&mut TerminalRenderer, &mut dyn fmt::Write) -> fmt::Result,
+    >(
         &mut self,
         f: F,
     ) -> io::Result<()> {
@@ -189,6 +223,10 @@ impl<'a> TerminalRenderer<'a> {
             self.height = 0;
         }
         Ok(())
+    }
+
+    pub fn render_search_string(&mut self, search_string: &str) -> io::Result<()> {
+        self.write_formatted_line(|_this, buf| write!(buf, "{}\n", search_string))
     }
 
     pub fn prompt(&mut self, prompt: &str) -> io::Result<()> {
