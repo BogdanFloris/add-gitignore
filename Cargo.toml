@@ -3,6 +3,13 @@ name = "add-gitignore"
 version = "0.2.0"
 authors = ["Bogdan Floris <bogdan.floris@gmail.com>"]
 edition = "2018"
+description = "Interactive CLI application which generates `.gitignore` files for your projects."
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/BogdanFloris/add-gitignore"
+repository = "https://github.com/BogdanFloris/add-gitignore"
+keywords = ["cli", "add", "gitignore", "git"]
+categories = ["command-line-utilities"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
