@@ -16,4 +16,4 @@ categories = ["command-line-utilities"]
 [dependencies]
 reqwest = "0.9.19"
 dialoguer = "0.4.0"
-console = { git = "https://github.com/BogdanFloris/console/" }
+console = "0.8.0"
