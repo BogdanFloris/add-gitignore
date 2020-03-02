@@ -29,7 +29,7 @@ impl<'a> Terminal<'a> {
     /// Adds multiple items to the Terminal options
     pub fn items(&mut self, items: &[&str]) -> &mut Terminal<'a> {
         for item in items {
-            self.items.push(item.to_string());
+            self.items.push((*item).to_string());
         }
         self
     }
@@ -98,8 +98,8 @@ impl<'a> Terminal<'a> {
             // Render the items
             for idx in filter.iter().skip(page * self.capacity).take(self.capacity) {
                 renderer.selection(
-                    self.items[idx.clone()].as_str(),
-                    match (checked[idx.clone()], sel == idx.clone()) {
+                    self.items[*idx].as_str(),
+                    match (checked[*idx], sel == *idx) {
                         (true, true) => SelectionStyle::CheckboxCheckedSelected,
                         (true, false) => SelectionStyle::CheckboxCheckedUnselected,
                         (false, true) => SelectionStyle::CheckboxUncheckedSelected,
@@ -226,7 +226,7 @@ impl<'a> TerminalRenderer<'a> {
     }
 
     pub fn render_search_string(&mut self, search_string: &str) -> io::Result<()> {
-        self.write_formatted_line(|_this, buf| write!(buf, "{}\n", search_string))
+        self.write_formatted_line(|_this, buf| writeln!(buf, "{}", search_string))
     }
 
     pub fn prompt(&mut self, prompt: &str) -> io::Result<()> {
@@ -244,7 +244,7 @@ impl<'a> TerminalRenderer<'a> {
         Ok(())
     }
 
-    pub fn clear_preserve_prompt(&mut self, size_vec: &Vec<usize>) -> io::Result<()> {
+    pub fn clear_preserve_prompt(&mut self, size_vec: &[usize]) -> io::Result<()> {
         let mut new_height = self.height;
         //Check each item size, increment on finding an overflow
         for size in size_vec {
