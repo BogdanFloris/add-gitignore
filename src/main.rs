@@ -40,9 +40,7 @@ fn main() -> std::io::Result<()> {
         // generate `.gitignore_{tech}` for each technology
         } else {
             for selection in selections {
-                let mut file = File::create(
-                    format!(".gitignore_{}", checkboxes[selection])
-                )?;
+                let mut file = File::create(format!(".gitignore_{}", checkboxes[selection]))?;
                 file.write_all(
                     client::get_gitignore(checkboxes[selection])
                         .unwrap()
